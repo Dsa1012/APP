@@ -425,6 +425,8 @@ with tab3:
     # Obtener datos según vista seleccionada
     if vista == "✅ Solo Activos":
         df = obtener_vehiculos()
+        # Agregar columna 'activo' para mantener consistencia
+        df['activo'] = 1
         mostrar_columna_estado = False
     else:
         df = obtener_todos_vehiculos()
