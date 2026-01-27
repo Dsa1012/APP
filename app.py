@@ -3,6 +3,10 @@ import pandas as pd
 import sqlite3
 from datetime import datetime
 import re
+import pytz
+
+# Configurar zona horaria de Chile
+CHILE_TZ = pytz.timezone('America/Santiago')
 
 # Configuración de la página
 st.set_page_config(
@@ -54,7 +58,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS registro_ingresos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             patente TEXT NOT NULL,
-            fecha_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            fecha_hora TEXT NOT NULL,
             guardia TEXT NOT NULL,
             tipo_ingreso TEXT,
             FOREIGN KEY (patente) REFERENCES vehiculos (patente)
@@ -125,10 +129,13 @@ def registrar_ingreso(patente, guardia, tipo_ingreso):
         
         patente_clean = patente.upper().replace(" ", "")
         
+        # Obtener hora actual de Chile
+        fecha_hora_chile = datetime.now(CHILE_TZ).strftime('%Y-%m-%d %H:%M:%S')
+        
         c.execute('''
-            INSERT INTO registro_ingresos (patente, guardia, tipo_ingreso)
-            VALUES (?, ?, ?)
-        ''', (patente_clean, guardia, tipo_ingreso))
+            INSERT INTO registro_ingresos (patente, guardia, tipo_ingreso, fecha_hora)
+            VALUES (?, ?, ?, ?)
+        ''', (patente_clean, guardia, tipo_ingreso, fecha_hora_chile))
         
         conn.commit()
         conn.close()
@@ -151,15 +158,18 @@ def obtener_vehiculos():
 
 def obtener_registros_hoy():
     """Obtiene los registros de ingreso del día"""
+    # Obtener fecha actual de Chile
+    fecha_hoy_chile = datetime.now(CHILE_TZ).strftime('%Y-%m-%d')
+    
     conn = sqlite3.connect('vehiculos_autorizados.db')
     df = pd.read_sql_query('''
         SELECT r.patente, r.fecha_hora, r.guardia, r.tipo_ingreso, 
                v.propietario, v.depto
         FROM registro_ingresos r
         LEFT JOIN vehiculos v ON r.patente = v.patente
-        WHERE DATE(r.fecha_hora) = DATE('now')
+        WHERE DATE(r.fecha_hora) = ?
         ORDER BY r.fecha_hora DESC
-    ''', conn)
+    ''', conn, params=[fecha_hoy_chile])
     conn.close()
     return df
 
@@ -170,6 +180,26 @@ def desactivar_vehiculo(vehiculo_id):
     c.execute('UPDATE vehiculos SET activo = 0 WHERE id = ?', (vehiculo_id,))
     conn.commit()
     conn.close()
+
+def reactivar_vehiculo(vehiculo_id):
+    """Reactiva un vehículo previamente desactivado"""
+    conn = sqlite3.connect('vehiculos_autorizados.db')
+    c = conn.cursor()
+    c.execute('UPDATE vehiculos SET activo = 1 WHERE id = ?', (vehiculo_id,))
+    conn.commit()
+    conn.close()
+
+def obtener_todos_vehiculos():
+    """Obtiene todos los vehículos (activos e inactivos)"""
+    conn = sqlite3.connect('vehiculos_autorizados.db')
+    df = pd.read_sql_query('''
+        SELECT id, patente, propietario, depto, marca, modelo, color, 
+               telefono, fecha_registro, observaciones, activo
+        FROM vehiculos 
+        ORDER BY activo DESC, fecha_registro DESC
+    ''', conn)
+    conn.close()
+    return df
 
 # Inicializar base de datos
 init_db()
@@ -193,6 +223,14 @@ with st.sidebar:
         st.warning("⚠️ Ingresa tu nombre para continuar")
     else:
         st.success(f"✅ Turno: {nombre_guardia}")
+    
+    st.divider()
+    
+    # Hora actual de Chile
+    hora_actual = datetime.now(CHILE_TZ).strftime('%H:%M:%S')
+    fecha_actual = datetime.now(CHILE_TZ).strftime('%d/%m/%Y')
+    st.info(f"🕐 **Hora Chile:** {hora_actual}")
+    st.caption(f"📅 {fecha_actual}")
     
     st.divider()
     
@@ -289,7 +327,8 @@ with tab1:
             
             if confirmar_btn:
                 if registrar_ingreso(resultado[1], nombre_guardia, tipo_ingreso):
-                    st.success(f"✅ Ingreso registrado a las {datetime.now().strftime('%H:%M:%S')}")
+                    hora_chile = datetime.now(CHILE_TZ).strftime('%H:%M:%S')
+                    st.success(f"✅ Ingreso registrado a las {hora_chile}")
                     st.info(f"**Vehículo:** {resultado[1]} | **Tipo:** {tipo_ingreso}")
                     st.balloons()
                     # Limpiar el estado después de registrar
@@ -350,7 +389,24 @@ with tab2:
 
 # TAB 3: LISTA DE AUTORIZADOS
 with tab3:
-    st.header("📋 Vehículos Autorizados")
+    st.header("📋 Gestión de Vehículos Autorizados")
+    
+    # Selector de vista
+    col_vista1, col_vista2 = st.columns([3, 1])
+    
+    with col_vista1:
+        vista = st.radio(
+            "Mostrar:",
+            ["✅ Solo Activos", "📋 Todos (Activos e Inactivos)"],
+            horizontal=True,
+            key="vista_vehiculos"
+        )
+    
+    with col_vista2:
+        st.write("")
+        st.write("")
+    
+    st.divider()
     
     # Filtros
     col1, col2, col3 = st.columns(3)
@@ -364,8 +420,15 @@ with tab3:
     with col3:
         filtro_propietario = st.text_input("🔎 Filtrar por Propietario", key="filtro_propietario")
     
-    # Obtener y filtrar datos
-    df = obtener_vehiculos()
+    st.divider()
+    
+    # Obtener datos según vista seleccionada
+    if vista == "✅ Solo Activos":
+        df = obtener_vehiculos()
+        mostrar_columna_estado = False
+    else:
+        df = obtener_todos_vehiculos()
+        mostrar_columna_estado = True
     
     if not df.empty:
         # Aplicar filtros
@@ -376,20 +439,110 @@ with tab3:
         if filtro_propietario:
             df = df[df['propietario'].str.contains(filtro_propietario, na=False, case=False)]
         
-        st.dataframe(
-            df[['patente', 'propietario', 'depto', 'marca', 'modelo', 'color', 'telefono']],
-            use_container_width=True,
-            hide_index=True
-        )
-        
-        st.download_button(
-            label="📥 Descargar Lista (Excel)",
-            data=df.to_csv(index=False).encode('utf-8'),
-            file_name=f"vehiculos_autorizados_{datetime.now().strftime('%Y%m%d')}.csv",
-            mime="text/csv"
-        )
+        if df.empty:
+            st.warning("🔍 No se encontraron vehículos con los filtros aplicados")
+        else:
+            st.success(f"📊 Mostrando {len(df)} vehículo(s)")
+            
+            # Mostrar tabla de vehículos con acciones
+            for idx, row in df.iterrows():
+                with st.container():
+                    col_info, col_actions = st.columns([4, 1])
+                    
+                    with col_info:
+                        # Indicador de estado
+                        if row['activo'] == 1:
+                            estado_emoji = "✅"
+                            estado_color = "normal"
+                        else:
+                            estado_emoji = "❌"
+                            estado_color = "inverse"
+                        
+                        # Mostrar información del vehículo
+                        st.markdown(f"""
+                        {estado_emoji} **{row['patente']}** - {row['propietario']} (Depto: {row['depto']})  
+                        📱 {row['telefono'] if row['telefono'] else 'Sin teléfono'} | 
+                        🚗 {row['marca']} {row['modelo']} ({row['color']})
+                        """)
+                        
+                        if row['observaciones']:
+                            st.caption(f"💬 {row['observaciones']}")
+                    
+                    with col_actions:
+                        if row['activo'] == 1:
+                            # Botón para desactivar
+                            if st.button(
+                                "🗑️ Eliminar", 
+                                key=f"deactivate_{row['id']}", 
+                                type="secondary",
+                                use_container_width=True
+                            ):
+                                # Guardar en session state para confirmación
+                                st.session_state[f'confirm_delete_{row["id"]}'] = True
+                                st.rerun()
+                            
+                            # Mostrar confirmación si está en session state
+                            if st.session_state.get(f'confirm_delete_{row["id"]}', False):
+                                st.warning("⚠️ ¿Confirmar?")
+                                col_si, col_no = st.columns(2)
+                                
+                                with col_si:
+                                    if st.button("Sí", key=f"confirm_yes_{row['id']}", type="primary"):
+                                        desactivar_vehiculo(row['id'])
+                                        st.session_state[f'confirm_delete_{row["id"]}'] = False
+                                        st.success(f"✅ Vehículo {row['patente']} eliminado")
+                                        st.rerun()
+                                
+                                with col_no:
+                                    if st.button("No", key=f"confirm_no_{row['id']}"):
+                                        st.session_state[f'confirm_delete_{row["id"]}'] = False
+                                        st.rerun()
+                        else:
+                            # Botón para reactivar
+                            if st.button(
+                                "♻️ Reactivar", 
+                                key=f"reactivate_{row['id']}", 
+                                type="primary",
+                                use_container_width=True
+                            ):
+                                reactivar_vehiculo(row['id'])
+                                st.success(f"✅ Vehículo {row['patente']} reactivado")
+                                st.rerun()
+                    
+                    st.divider()
+            
+            # Botón de descarga
+            st.subheader("📥 Exportar Datos")
+            
+            col_download1, col_download2 = st.columns(2)
+            
+            with col_download1:
+                # Exportar solo activos
+                df_activos = df[df['activo'] == 1] if mostrar_columna_estado else df
+                if not df_activos.empty:
+                    csv_activos = df_activos[['patente', 'propietario', 'depto', 'marca', 'modelo', 'color', 'telefono']].to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="📥 Descargar Activos (CSV)",
+                        data=csv_activos,
+                        file_name=f"vehiculos_activos_{datetime.now(CHILE_TZ).strftime('%Y%m%d')}.csv",
+                        mime="text/csv",
+                        use_container_width=True
+                    )
+            
+            with col_download2:
+                # Exportar todos
+                if mostrar_columna_estado:
+                    csv_todos = df[['patente', 'propietario', 'depto', 'marca', 'modelo', 'color', 'telefono', 'activo']].to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="📥 Descargar Todos (CSV)",
+                        data=csv_todos,
+                        file_name=f"vehiculos_todos_{datetime.now(CHILE_TZ).strftime('%Y%m%d')}.csv",
+                        mime="text/csv",
+                        use_container_width=True
+                    )
     else:
-        st.info("No hay vehículos registrados aún")
+        st.info("📝 No hay vehículos registrados aún. Ve a la pestaña '➕ Agregar Vehículo' para empezar.")
+
 
 # TAB 4: REGISTRO DE INGRESOS
 with tab4:
