@@ -174,6 +174,12 @@ def desactivar_vehiculo(vehiculo_id):
 # Inicializar base de datos
 init_db()
 
+# Inicializar session_state
+if 'vehiculo_encontrado' not in st.session_state:
+    st.session_state.vehiculo_encontrado = None
+if 'mostrar_confirmacion' not in st.session_state:
+    st.session_state.mostrar_confirmacion = False
+
 # Título principal
 st.markdown('<p class="big-font">🚗 Control de Acceso Vehicular</p>', unsafe_allow_html=True)
 st.markdown("### Sistema para Guardias de Seguridad - Condominio")
@@ -220,46 +226,89 @@ with tab1:
         st.write("")
         buscar_btn = st.button("🔎 BUSCAR", type="primary", use_container_width=True)
     
-    if buscar_btn and patente_buscar:
-        if not nombre_guardia:
+    # Limpiar búsqueda anterior si se presiona buscar
+    if buscar_btn:
+        st.session_state.vehiculo_encontrado = None
+        st.session_state.mostrar_confirmacion = False
+        
+        if not patente_buscar:
+            st.warning("⚠️ Por favor ingresa una patente")
+        elif not nombre_guardia:
             st.error("❌ Debes ingresar tu nombre como guardia primero")
         else:
             resultado = buscar_vehiculo(patente_buscar)
-            
             if resultado:
-                st.success("✅ VEHÍCULO AUTORIZADO - PUEDE INGRESAR")
-                
-                # Mostrar información del vehículo
-                col1, col2, col3 = st.columns(3)
-                
-                with col1:
-                    st.info(f"**Patente:** {resultado[1]}")
-                    st.info(f"**Propietario:** {resultado[2]}")
-                    st.info(f"**Depto:** {resultado[3]}")
-                
-                with col2:
-                    st.info(f"**Marca:** {resultado[4]}")
-                    st.info(f"**Modelo:** {resultado[5]}")
-                    st.info(f"**Color:** {resultado[6]}")
-                
-                with col3:
-                    st.info(f"**Teléfono:** {resultado[7]}")
-                    if resultado[10]:
-                        st.warning(f"**Obs:** {resultado[10]}")
-                
-                # Registrar ingreso
-                tipo_ingreso = st.selectbox("Tipo de Ingreso", ["Residente", "Visita", "Servicio"])
-                
-                if st.button("✅ CONFIRMAR INGRESO", type="primary"):
-                    if registrar_ingreso(resultado[1], nombre_guardia, tipo_ingreso):
-                        st.success(f"✅ Ingreso registrado a las {datetime.now().strftime('%H:%M:%S')}")
-                        st.balloons()
-                    else:
-                        st.error("Error al registrar ingreso")
+                st.session_state.vehiculo_encontrado = resultado
+                st.session_state.mostrar_confirmacion = True
             else:
-                st.error("❌ VEHÍCULO NO AUTORIZADO")
-                st.warning("⚠️ Este vehículo NO tiene permiso de ingreso al condominio")
-                st.info("💡 Si debe ingresar, solicita autorización al administrador o agrega el vehículo.")
+                st.session_state.vehiculo_encontrado = None
+                st.session_state.mostrar_confirmacion = False
+    
+    # Mostrar resultados si hay un vehículo encontrado
+    if st.session_state.mostrar_confirmacion and st.session_state.vehiculo_encontrado:
+        resultado = st.session_state.vehiculo_encontrado
+        
+        st.success("✅ VEHÍCULO AUTORIZADO - PUEDE INGRESAR")
+        
+        # Mostrar información del vehículo
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.info(f"**Patente:** {resultado[1]}")
+            st.info(f"**Propietario:** {resultado[2]}")
+            st.info(f"**Depto:** {resultado[3]}")
+        
+        with col2:
+            st.info(f"**Marca:** {resultado[4]}")
+            st.info(f"**Modelo:** {resultado[5]}")
+            st.info(f"**Color:** {resultado[6]}")
+        
+        with col3:
+            st.info(f"**Teléfono:** {resultado[7]}")
+            if resultado[10]:
+                st.warning(f"**Obs:** {resultado[10]}")
+        
+        st.divider()
+        
+        # Formulario de confirmación de ingreso
+        with st.form("form_confirmar_ingreso", clear_on_submit=True):
+            tipo_ingreso = st.selectbox(
+                "Tipo de Ingreso", 
+                ["Residente", "Visita", "Servicio"],
+                key="tipo_ingreso_select"
+            )
+            
+            col_a, col_b, col_c = st.columns([1, 1, 1])
+            
+            with col_b:
+                confirmar_btn = st.form_submit_button(
+                    "✅ CONFIRMAR INGRESO", 
+                    type="primary", 
+                    use_container_width=True
+                )
+            
+            if confirmar_btn:
+                if registrar_ingreso(resultado[1], nombre_guardia, tipo_ingreso):
+                    st.success(f"✅ Ingreso registrado a las {datetime.now().strftime('%H:%M:%S')}")
+                    st.info(f"**Vehículo:** {resultado[1]} | **Tipo:** {tipo_ingreso}")
+                    st.balloons()
+                    # Limpiar el estado después de registrar
+                    st.session_state.vehiculo_encontrado = None
+                    st.session_state.mostrar_confirmacion = False
+                    st.rerun()
+                else:
+                    st.error("Error al registrar ingreso")
+        
+        # Botón para nueva búsqueda
+        if st.button("🔄 NUEVA BÚSQUEDA", use_container_width=True):
+            st.session_state.vehiculo_encontrado = None
+            st.session_state.mostrar_confirmacion = False
+            st.rerun()
+    
+    elif buscar_btn and not st.session_state.vehiculo_encontrado:
+        st.error("❌ VEHÍCULO NO AUTORIZADO")
+        st.warning("⚠️ Este vehículo NO tiene permiso de ingreso al condominio")
+        st.info("💡 Si debe ingresar, solicita autorización al administrador o agrega el vehículo.")
 
 # TAB 2: AGREGAR VEHÍCULO
 with tab2:
