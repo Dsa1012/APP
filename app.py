@@ -13,7 +13,12 @@ st.set_page_config(
     page_title="Control de Acceso Vehicular",
     page_icon="🚗",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
+    menu_items={
+        'Get Help': None,
+        'Report a bug': None,
+        'About': "Sistema de Control de Acceso Vehicular v2.0\nDesarrollado para Guardias de Seguridad"
+    }
 )
 
 # CSS personalizado
@@ -201,6 +206,76 @@ def obtener_todos_vehiculos():
     conn.close()
     return df
 
+def obtener_registros_rango_fechas(fecha_inicio, fecha_fin):
+    """Obtiene registros entre dos fechas"""
+    conn = sqlite3.connect('vehiculos_autorizados.db')
+    df = pd.read_sql_query('''
+        SELECT r.patente, r.fecha_hora, r.guardia, r.tipo_ingreso, 
+               v.propietario, v.depto
+        FROM registro_ingresos r
+        LEFT JOIN vehiculos v ON r.patente = v.patente
+        WHERE DATE(r.fecha_hora) BETWEEN ? AND ?
+        ORDER BY r.fecha_hora DESC
+    ''', conn, params=[fecha_inicio, fecha_fin])
+    conn.close()
+    return df
+
+def obtener_estadisticas_periodo(dias=7):
+    """Obtiene estadísticas de los últimos N días"""
+    fecha_fin = datetime.now(CHILE_TZ).strftime('%Y-%m-%d')
+    fecha_inicio = (datetime.now(CHILE_TZ) - pd.Timedelta(days=dias-1)).strftime('%Y-%m-%d')
+    
+    conn = sqlite3.connect('vehiculos_autorizados.db')
+    
+    # Total de ingresos
+    df_total = pd.read_sql_query('''
+        SELECT COUNT(*) as total
+        FROM registro_ingresos
+        WHERE DATE(fecha_hora) BETWEEN ? AND ?
+    ''', conn, params=[fecha_inicio, fecha_fin])
+    
+    # Ingresos por día
+    df_por_dia = pd.read_sql_query('''
+        SELECT DATE(fecha_hora) as fecha, COUNT(*) as cantidad
+        FROM registro_ingresos
+        WHERE DATE(fecha_hora) BETWEEN ? AND ?
+        GROUP BY DATE(fecha_hora)
+        ORDER BY fecha
+    ''', conn, params=[fecha_inicio, fecha_fin])
+    
+    # Vehículos más frecuentes
+    df_vehiculos = pd.read_sql_query('''
+        SELECT r.patente, v.propietario, v.depto, COUNT(*) as cantidad
+        FROM registro_ingresos r
+        LEFT JOIN vehiculos v ON r.patente = v.patente
+        WHERE DATE(r.fecha_hora) BETWEEN ? AND ?
+        GROUP BY r.patente
+        ORDER BY cantidad DESC
+        LIMIT 10
+    ''', conn, params=[fecha_inicio, fecha_fin])
+    
+    # Horarios pico
+    df_horarios = pd.read_sql_query('''
+        SELECT 
+            CAST(strftime('%H', fecha_hora) AS INTEGER) as hora,
+            COUNT(*) as cantidad
+        FROM registro_ingresos
+        WHERE DATE(fecha_hora) BETWEEN ? AND ?
+        GROUP BY hora
+        ORDER BY hora
+    ''', conn, params=[fecha_inicio, fecha_fin])
+    
+    conn.close()
+    
+    return {
+        'total': df_total['total'].iloc[0] if not df_total.empty else 0,
+        'por_dia': df_por_dia,
+        'vehiculos': df_vehiculos,
+        'horarios': df_horarios,
+        'fecha_inicio': fecha_inicio,
+        'fecha_fin': fecha_fin
+    }
+
 # Inicializar base de datos
 init_db()
 
@@ -209,6 +284,17 @@ if 'vehiculo_encontrado' not in st.session_state:
     st.session_state.vehiculo_encontrado = None
 if 'mostrar_confirmacion' not in st.session_state:
     st.session_state.mostrar_confirmacion = False
+if 'auto_refresh' not in st.session_state:
+    st.session_state.auto_refresh = True
+if 'last_refresh_time' not in st.session_state:
+    st.session_state.last_refresh_time = datetime.now(CHILE_TZ)
+
+# Auto-refresh cada 30 segundos (solo si está habilitado)
+if st.session_state.auto_refresh:
+    tiempo_transcurrido = (datetime.now(CHILE_TZ) - st.session_state.last_refresh_time).total_seconds()
+    if tiempo_transcurrido > 30:
+        st.session_state.last_refresh_time = datetime.now(CHILE_TZ)
+        st.rerun()
 
 # Título principal
 st.markdown('<p class="big-font">🚗 Control de Acceso Vehicular</p>', unsafe_allow_html=True)
@@ -226,21 +312,41 @@ with st.sidebar:
     
     st.divider()
     
-    # Hora actual de Chile
+    # Hora actual de Chile con auto-refresh
     hora_actual = datetime.now(CHILE_TZ).strftime('%H:%M:%S')
     fecha_actual = datetime.now(CHILE_TZ).strftime('%d/%m/%Y')
     st.info(f"🕐 **Hora Chile:** {hora_actual}")
     st.caption(f"📅 {fecha_actual}")
+    
+    # Toggle de auto-refresh
+    auto_refresh = st.checkbox(
+        "🔄 Actualización automática (30s)", 
+        value=st.session_state.auto_refresh,
+        help="Actualiza la hora y estadísticas cada 30 segundos"
+    )
+    if auto_refresh != st.session_state.auto_refresh:
+        st.session_state.auto_refresh = auto_refresh
+        st.session_state.last_refresh_time = datetime.now(CHILE_TZ)
     
     st.divider()
     
     # Estadísticas del día
     st.subheader("📊 Resumen del Día")
     df_hoy = obtener_registros_hoy()
-    st.metric("Ingresos Hoy", len(df_hoy))
+    
+    col_stat1, col_stat2 = st.columns(2)
+    with col_stat1:
+        st.metric("Ingresos", len(df_hoy))
+    with col_stat2:
+        # Calcular cambio respecto a ayer
+        fecha_ayer = (datetime.now(CHILE_TZ) - pd.Timedelta(days=1)).strftime('%Y-%m-%d')
+        df_ayer = obtener_registros_rango_fechas(fecha_ayer, fecha_ayer)
+        delta = len(df_hoy) - len(df_ayer)
+        st.metric("vs Ayer", f"{delta:+d}", delta=delta)
     
     df_vehiculos = obtener_vehiculos()
-    st.metric("Total Autorizados", len(df_vehiculos))
+    st.metric("Autorizados", len(df_vehiculos))
+
 
 # Tabs principales
 tab1, tab2, tab3, tab4 = st.tabs(["🔍 Validar Ingreso", "➕ Agregar Vehículo", "📋 Lista de Autorizados", "📈 Registro de Ingresos"])
@@ -546,32 +652,376 @@ with tab3:
         st.info("📝 No hay vehículos registrados aún. Ve a la pestaña '➕ Agregar Vehículo' para empezar.")
 
 
-# TAB 4: REGISTRO DE INGRESOS
+# TAB 4: REGISTRO DE INGRESOS Y ESTADÍSTICAS
 with tab4:
-    st.header("📈 Registro de Ingresos del Día")
+    st.header("📈 Registro de Ingresos y Estadísticas")
     
-    df_ingresos = obtener_registros_hoy()
+    # Selector de período
+    periodo = st.radio(
+        "Selecciona período:",
+        ["📅 Hoy", "📊 Última Semana", "📆 Último Mes", "🔍 Rango Personalizado", "📈 Dashboard"],
+        horizontal=True
+    )
     
-    if not df_ingresos.empty:
-        st.dataframe(
-            df_ingresos,
-            use_container_width=True,
-            hide_index=True
-        )
+    st.divider()
+    
+    if periodo == "📅 Hoy":
+        # Vista del día actual
+        st.subheader(f"Ingresos de Hoy - {datetime.now(CHILE_TZ).strftime('%d/%m/%Y')}")
         
-        # Gráfico de ingresos por hora
-        st.subheader("📊 Ingresos por Hora")
-        df_ingresos['hora'] = pd.to_datetime(df_ingresos['fecha_hora']).dt.hour
-        ingresos_hora = df_ingresos.groupby('hora').size()
-        st.bar_chart(ingresos_hora)
+        df_ingresos = obtener_registros_hoy()
         
-    else:
-        st.info("No hay ingresos registrados hoy")
+        if not df_ingresos.empty:
+            # Métricas rápidas
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                st.metric("Total Ingresos", len(df_ingresos))
+            
+            with col2:
+                residentes = len(df_ingresos[df_ingresos['tipo_ingreso'] == 'Residente'])
+                st.metric("Residentes", residentes)
+            
+            with col3:
+                visitas = len(df_ingresos[df_ingresos['tipo_ingreso'] == 'Visita'])
+                st.metric("Visitas", visitas)
+            
+            with col4:
+                servicios = len(df_ingresos[df_ingresos['tipo_ingreso'] == 'Servicio'])
+                st.metric("Servicios", servicios)
+            
+            st.divider()
+            
+            # Tabla de registros
+            st.subheader("📋 Detalle de Ingresos")
+            st.dataframe(
+                df_ingresos,
+                use_container_width=True,
+                hide_index=True
+            )
+            
+            # Gráfico de ingresos por hora
+            st.subheader("📊 Ingresos por Hora")
+            df_ingresos['hora'] = pd.to_datetime(df_ingresos['fecha_hora']).dt.hour
+            ingresos_hora = df_ingresos.groupby('hora').size()
+            st.bar_chart(ingresos_hora)
+            
+            # Exportar
+            csv_hoy = df_ingresos.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Descargar Registros de Hoy (CSV)",
+                data=csv_hoy,
+                file_name=f"ingresos_{datetime.now(CHILE_TZ).strftime('%Y%m%d')}.csv",
+                mime="text/csv"
+            )
+        else:
+            st.info("No hay ingresos registrados hoy")
+    
+    elif periodo == "📊 Última Semana":
+        # Vista de última semana
+        st.subheader("📊 Estadísticas de los Últimos 7 Días")
+        
+        stats = obtener_estadisticas_periodo(7)
+        
+        # Métricas generales
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("Total Ingresos", stats['total'])
+        
+        with col2:
+            promedio = stats['total'] / 7
+            st.metric("Promedio Diario", f"{promedio:.1f}")
+        
+        with col3:
+            if not stats['por_dia'].empty:
+                dia_mas_activo = stats['por_dia'].loc[stats['por_dia']['cantidad'].idxmax()]
+                fecha_formateada = pd.to_datetime(dia_mas_activo['fecha']).strftime('%d/%m')
+                st.metric("Día Más Activo", f"{fecha_formateada} ({int(dia_mas_activo['cantidad'])})")
+            else:
+                st.metric("Día Más Activo", "N/A")
+        
+        st.divider()
+        
+        # Gráfico de ingresos por día
+        if not stats['por_dia'].empty:
+            st.subheader("📈 Tendencia Semanal")
+            stats['por_dia']['fecha'] = pd.to_datetime(stats['por_dia']['fecha'])
+            stats['por_dia']['dia'] = stats['por_dia']['fecha'].dt.strftime('%d/%m')
+            
+            import plotly.express as px
+            fig = px.line(
+                stats['por_dia'], 
+                x='dia', 
+                y='cantidad',
+                markers=True,
+                title='Ingresos por Día (Última Semana)'
+            )
+            fig.update_layout(xaxis_title="Fecha", yaxis_title="Cantidad de Ingresos")
+            st.plotly_chart(fig, use_container_width=True)
+        
+        # Top vehículos
+        if not stats['vehiculos'].empty:
+            st.subheader("🏆 Top 10 Vehículos Más Frecuentes")
+            st.dataframe(
+                stats['vehiculos'][['patente', 'propietario', 'depto', 'cantidad']],
+                use_container_width=True,
+                hide_index=True
+            )
+        
+        # Horarios pico
+        if not stats['horarios'].empty:
+            st.subheader("⏰ Horarios de Mayor Tráfico")
+            st.bar_chart(stats['horarios'].set_index('hora')['cantidad'])
+    
+    elif periodo == "📆 Último Mes":
+        # Vista de último mes
+        st.subheader("📆 Estadísticas de los Últimos 30 Días")
+        
+        stats = obtener_estadisticas_periodo(30)
+        
+        # Métricas generales
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.metric("Total Ingresos", stats['total'])
+        
+        with col2:
+            promedio = stats['total'] / 30
+            st.metric("Promedio Diario", f"{promedio:.1f}")
+        
+        with col3:
+            if not stats['vehiculos'].empty:
+                vehiculos_unicos = len(stats['vehiculos'])
+                st.metric("Vehículos Únicos", vehiculos_unicos)
+            else:
+                st.metric("Vehículos Únicos", 0)
+        
+        with col4:
+            if not stats['por_dia'].empty:
+                dia_mas_activo = stats['por_dia'].loc[stats['por_dia']['cantidad'].idxmax()]
+                st.metric("Máximo en un Día", int(dia_mas_activo['cantidad']))
+            else:
+                st.metric("Máximo en un Día", 0)
+        
+        st.divider()
+        
+        # Gráfico de tendencia mensual
+        if not stats['por_dia'].empty:
+            st.subheader("📈 Tendencia Mensual")
+            stats['por_dia']['fecha'] = pd.to_datetime(stats['por_dia']['fecha'])
+            stats['por_dia']['dia'] = stats['por_dia']['fecha'].dt.strftime('%d/%m')
+            
+            import plotly.express as px
+            fig = px.area(
+                stats['por_dia'], 
+                x='dia', 
+                y='cantidad',
+                title='Ingresos por Día (Último Mes)'
+            )
+            fig.update_layout(xaxis_title="Fecha", yaxis_title="Cantidad de Ingresos")
+            st.plotly_chart(fig, use_container_width=True)
+        
+        # Top 10 vehículos
+        if not stats['vehiculos'].empty:
+            st.subheader("🏆 Top 10 Vehículos del Mes")
+            
+            import plotly.express as px
+            fig = px.bar(
+                stats['vehiculos'].head(10),
+                x='patente',
+                y='cantidad',
+                text='cantidad',
+                title='Vehículos Más Frecuentes'
+            )
+            fig.update_traces(textposition='outside')
+            st.plotly_chart(fig, use_container_width=True)
+            
+            st.dataframe(
+                stats['vehiculos'][['patente', 'propietario', 'depto', 'cantidad']],
+                use_container_width=True,
+                hide_index=True
+            )
+    
+    elif periodo == "🔍 Rango Personalizado":
+        # Selector de rango de fechas
+        st.subheader("🔍 Selecciona Rango de Fechas")
+        
+        col_fecha1, col_fecha2 = st.columns(2)
+        
+        with col_fecha1:
+            fecha_inicio = st.date_input(
+                "Fecha Inicio",
+                value=datetime.now(CHILE_TZ) - pd.Timedelta(days=7),
+                max_value=datetime.now(CHILE_TZ)
+            )
+        
+        with col_fecha2:
+            fecha_fin = st.date_input(
+                "Fecha Fin",
+                value=datetime.now(CHILE_TZ),
+                max_value=datetime.now(CHILE_TZ)
+            )
+        
+        if fecha_inicio > fecha_fin:
+            st.error("❌ La fecha de inicio debe ser anterior a la fecha de fin")
+        else:
+            fecha_inicio_str = fecha_inicio.strftime('%Y-%m-%d')
+            fecha_fin_str = fecha_fin.strftime('%Y-%m-%d')
+            
+            df_rango = obtener_registros_rango_fechas(fecha_inicio_str, fecha_fin_str)
+            
+            if not df_rango.empty:
+                st.success(f"📊 {len(df_rango)} registros encontrados")
+                
+                # Métricas
+                col1, col2, col3 = st.columns(3)
+                
+                dias_diferencia = (fecha_fin - fecha_inicio).days + 1
+                
+                with col1:
+                    st.metric("Total Ingresos", len(df_rango))
+                
+                with col2:
+                    promedio = len(df_rango) / dias_diferencia
+                    st.metric("Promedio Diario", f"{promedio:.1f}")
+                
+                with col3:
+                    st.metric("Días Analizados", dias_diferencia)
+                
+                st.divider()
+                
+                # Tabla de registros
+                st.dataframe(
+                    df_rango,
+                    use_container_width=True,
+                    hide_index=True
+                )
+                
+                # Exportar
+                csv_rango = df_rango.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="📥 Descargar Registros (CSV)",
+                    data=csv_rango,
+                    file_name=f"ingresos_{fecha_inicio_str}_a_{fecha_fin_str}.csv",
+                    mime="text/csv"
+                )
+            else:
+                st.info("No hay registros en el rango seleccionado")
+    
+    else:  # Dashboard
+        st.subheader("📈 Dashboard de Estadísticas")
+        
+        # Tabs para diferentes períodos
+        tab_dash1, tab_dash2, tab_dash3 = st.tabs(["📅 Hoy", "📊 Semana", "📆 Mes"])
+        
+        with tab_dash1:
+            df_hoy = obtener_registros_hoy()
+            
+            if not df_hoy.empty:
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    st.metric("Total Hoy", len(df_hoy))
+                
+                with col2:
+                    if len(df_hoy) > 0:
+                        ultima_hora = pd.to_datetime(df_hoy['fecha_hora'].iloc[0]).strftime('%H:%M')
+                        st.metric("Último Ingreso", ultima_hora)
+                    else:
+                        st.metric("Último Ingreso", "N/A")
+                
+                with col3:
+                    vehiculos_hoy = df_hoy['patente'].nunique()
+                    st.metric("Vehículos Únicos", vehiculos_hoy)
+                
+                # Gráfico por tipo
+                if 'tipo_ingreso' in df_hoy.columns:
+                    tipo_counts = df_hoy['tipo_ingreso'].value_counts()
+                    
+                    import plotly.express as px
+                    fig = px.pie(
+                        values=tipo_counts.values,
+                        names=tipo_counts.index,
+                        title='Distribución por Tipo de Ingreso'
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("No hay datos para hoy")
+        
+        with tab_dash2:
+            stats_semana = obtener_estadisticas_periodo(7)
+            
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.metric("Total Semana", stats_semana['total'])
+            
+            with col2:
+                promedio = stats_semana['total'] / 7
+                st.metric("Promedio Diario", f"{promedio:.1f}")
+            
+            with col3:
+                if not stats_semana['vehiculos'].empty:
+                    st.metric("Vehículos Únicos", len(stats_semana['vehiculos']))
+                else:
+                    st.metric("Vehículos Únicos", 0)
+            
+            # Gráfico de horarios pico
+            if not stats_semana['horarios'].empty:
+                st.subheader("⏰ Horarios Pico de la Semana")
+                
+                import plotly.express as px
+                fig = px.bar(
+                    stats_semana['horarios'],
+                    x='hora',
+                    y='cantidad',
+                    title='Ingresos por Hora'
+                )
+                fig.update_layout(xaxis_title="Hora del Día", yaxis_title="Cantidad")
+                st.plotly_chart(fig, use_container_width=True)
+        
+        with tab_dash3:
+            stats_mes = obtener_estadisticas_periodo(30)
+            
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                st.metric("Total Mes", stats_mes['total'])
+            
+            with col2:
+                promedio = stats_mes['total'] / 30
+                st.metric("Promedio Diario", f"{promedio:.1f}")
+            
+            with col3:
+                if not stats_mes['vehiculos'].empty:
+                    st.metric("Vehículos Únicos", len(stats_mes['vehiculos']))
+                else:
+                    st.metric("Vehículos Únicos", 0)
+            
+            with col4:
+                if not stats_mes['por_dia'].empty:
+                    max_dia = stats_mes['por_dia']['cantidad'].max()
+                    st.metric("Máximo en un Día", int(max_dia))
+                else:
+                    st.metric("Máximo en un Día", 0)
+            
+            # Top vehículos del mes
+            if not stats_mes['vehiculos'].empty:
+                st.subheader("🏆 Top 5 Vehículos del Mes")
+                top_5 = stats_mes['vehiculos'].head(5)
+                
+                for idx, row in top_5.iterrows():
+                    col_a, col_b = st.columns([3, 1])
+                    with col_a:
+                        st.write(f"**{row['patente']}** - {row['propietario']} (Depto {row['depto']})")
+                    with col_b:
+                        st.metric("Ingresos", int(row['cantidad']))
 
 # Footer
 st.divider()
 st.markdown("""
     <div style='text-align: center; color: gray;'>
-        <p>Sistema de Control de Acceso Vehicular v1.0 | Desarrollado para Guardias de Seguridad</p>
+        <p>Sistema de Control de Acceso Vehicular v2.0 | Desarrollado para Guardias de Seguridad</p>
     </div>
     """, unsafe_allow_html=True)
