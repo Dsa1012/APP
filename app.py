@@ -17,7 +17,7 @@ st.set_page_config(
     menu_items={
         'Get Help': None,
         'Report a bug': None,
-        'About': "Control de Acceso Integral v3.0\nDesarrollado por Simatec Seguridad S.A."
+        'About': "Control de Acceso Integral v3.0\nDesarrollado por Simatec S.A."
     }
 )
 
@@ -626,6 +626,7 @@ with tab3:
 with tab4:
     st.header("👮 Gestión de Guardias")
     
+    # Agregar guardia nuevo (siempre visible)
     with st.expander("➕ Agregar Guardia Nuevo", expanded=False):
         with st.form("agregar_guardia_form"):
             col1, col2 = st.columns(2)
@@ -647,39 +648,42 @@ with tab4:
                     else:
                         st.error(f"❌ {mensaje}")
     
-    st.subheader("📋 Guardias Registrados")
-    df_guardias = obtener_todos_guardias()
+    st.divider()
     
-    if not df_guardias.empty:
-        activos = df_guardias[df_guardias['activo'] == 1]
-        inactivos = df_guardias[df_guardias['activo'] == 0]
+    # Lista de guardias (en expander que se puede reabrir)
+    with st.expander("📋 Ver Lista de Guardias", expanded=True):
+        df_guardias = obtener_todos_guardias()
         
-        st.success(f"✅ Activos ({len(activos)})")
-        for idx, row in activos.iterrows():
-            col_info, col_actions = st.columns([4, 1])
-            with col_info:
-                tel = row['telefono'] if row['telefono'] else "Sin teléfono"
-                st.write(f"✅ **{row['nombre']}**")
-                st.caption(f"📱 {tel}")
-            with col_actions:
-                if st.button("❌", key=f"deact_guar_{row['id']}", use_container_width=True):
-                    desactivar_guardia(row['id'])
-                    st.rerun()
-            st.divider()
-        
-        if not inactivos.empty:
-            st.warning(f"❌ Inactivos ({len(inactivos)})")
-            for idx, row in inactivos.iterrows():
+        if not df_guardias.empty:
+            activos = df_guardias[df_guardias['activo'] == 1]
+            inactivos = df_guardias[df_guardias['activo'] == 0]
+            
+            st.success(f"✅ Activos ({len(activos)})")
+            for idx, row in activos.iterrows():
                 col_info, col_actions = st.columns([4, 1])
                 with col_info:
-                    st.write(f"❌ **{row['nombre']}**")
+                    tel = row['telefono'] if row['telefono'] else "Sin teléfono"
+                    st.write(f"✅ **{row['nombre']}**")
+                    st.caption(f"📱 {tel}")
                 with col_actions:
-                    if st.button("✅", key=f"react_guar_{row['id']}", use_container_width=True):
-                        reactivar_guardia(row['id'])
+                    if st.button("❌", key=f"deact_guar_{row['id']}", use_container_width=True):
+                        desactivar_guardia(row['id'])
                         st.rerun()
                 st.divider()
-    else:
-        st.info("No hay guardias registrados")
+            
+            if not inactivos.empty:
+                st.warning(f"❌ Inactivos ({len(inactivos)})")
+                for idx, row in inactivos.iterrows():
+                    col_info, col_actions = st.columns([4, 1])
+                    with col_info:
+                        st.write(f"❌ **{row['nombre']}**")
+                    with col_actions:
+                        if st.button("✅", key=f"react_guar_{row['id']}", use_container_width=True):
+                            reactivar_guardia(row['id'])
+                            st.rerun()
+                    st.divider()
+        else:
+            st.info("No hay guardias registrados")
 
 # TAB 5: REGISTROS
 with tab5:
@@ -747,4 +751,4 @@ with tab5:
                 st.info("No hay registros en el rango seleccionado")
 
 st.divider()
-st.markdown('<div style="text-align: center; color: gray;"><p>Sistema de Control de Acceso v3.0 | Desarrollado por Simatec Seguridad S.A.</p></div>', unsafe_allow_html=True)
+st.markdown('<div style="text-align: center; color: gray;"><p>Sistema de Control de Acceso v3.0 | Desarrollado por Simatec S.A.</p></div>', unsafe_allow_html=True)
