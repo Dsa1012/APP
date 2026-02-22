@@ -13,7 +13,7 @@ st.set_page_config(
     page_title="Control de Acceso - Raúl Seguridad",
     page_icon="🚗",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="expanded",  # Siempre expandido
     menu_items={
         'Get Help': None,
         'Report a bug': None,
@@ -31,6 +31,32 @@ st.markdown("""
     .stAlert {padding: 1rem; margin: 1rem 0;}
     .stDeployButton {display:none;}
     .stApp header {background-color: transparent;}
+    
+    /* FORZAR SIDEBAR SIEMPRE VISIBLE */
+    section[data-testid="stSidebar"] {
+        display: block !important;
+        visibility: visible !important;
+        min-width: 300px !important;
+    }
+    
+    section[data-testid="stSidebar"][aria-expanded="false"] {
+        display: block !important;
+        margin-left: 0px !important;
+    }
+    
+    /* Ocultar botón de colapsar sidebar */
+    button[kind="header"] {
+        display: none !important;
+    }
+    
+    [data-testid="collapsedControl"] {
+        display: none !important;
+    }
+    
+    /* Asegurar que el sidebar no se pueda cerrar */
+    .css-1lcbmhc {
+        display: block !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -377,7 +403,19 @@ with tab1:
     st.header("🔍 Validación de Entrada")
     
     if not nombre_guardia:
-        st.warning("⚠️ Debes seleccionar un guardia en el sidebar para continuar")
+        st.warning("⚠️ **IMPORTANTE:** Debes seleccionar un guardia en el panel lateral izquierdo (sidebar) para continuar")
+        st.info("👈 **Mira a la izquierda** → Abre el panel lateral (sidebar) si está cerrado y selecciona tu nombre de la lista")
+        
+        # Botón de ayuda visual
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            st.markdown("""
+            ### 📋 Pasos para empezar:
+            1. 👈 Abre el **panel lateral izquierdo** (sidebar)
+            2. 👤 Selecciona tu **nombre** de la lista de guardias
+            3. ✅ El turno se detectará automáticamente
+            4. 🚀 ¡Listo! Ya puedes validar entradas
+            """)
     else:
         col_veh, col_per = st.columns(2)
         
@@ -626,6 +664,7 @@ with tab3:
 with tab4:
     st.header("👮 Gestión de Guardias")
     
+    # Agregar guardia nuevo (siempre visible)
     with st.expander("➕ Agregar Guardia Nuevo", expanded=False):
         with st.form("agregar_guardia_form"):
             col1, col2 = st.columns(2)
@@ -647,39 +686,42 @@ with tab4:
                     else:
                         st.error(f"❌ {mensaje}")
     
-    st.subheader("📋 Guardias Registrados")
-    df_guardias = obtener_todos_guardias()
+    st.divider()
     
-    if not df_guardias.empty:
-        activos = df_guardias[df_guardias['activo'] == 1]
-        inactivos = df_guardias[df_guardias['activo'] == 0]
+    # Lista de guardias (en expander que se puede reabrir)
+    with st.expander("📋 Ver Lista de Guardias", expanded=True):
+        df_guardias = obtener_todos_guardias()
         
-        st.success(f"✅ Activos ({len(activos)})")
-        for idx, row in activos.iterrows():
-            col_info, col_actions = st.columns([4, 1])
-            with col_info:
-                tel = row['telefono'] if row['telefono'] else "Sin teléfono"
-                st.write(f"✅ **{row['nombre']}**")
-                st.caption(f"📱 {tel}")
-            with col_actions:
-                if st.button("❌", key=f"deact_guar_{row['id']}", use_container_width=True):
-                    desactivar_guardia(row['id'])
-                    st.rerun()
-            st.divider()
-        
-        if not inactivos.empty:
-            st.warning(f"❌ Inactivos ({len(inactivos)})")
-            for idx, row in inactivos.iterrows():
+        if not df_guardias.empty:
+            activos = df_guardias[df_guardias['activo'] == 1]
+            inactivos = df_guardias[df_guardias['activo'] == 0]
+            
+            st.success(f"✅ Activos ({len(activos)})")
+            for idx, row in activos.iterrows():
                 col_info, col_actions = st.columns([4, 1])
                 with col_info:
-                    st.write(f"❌ **{row['nombre']}**")
+                    tel = row['telefono'] if row['telefono'] else "Sin teléfono"
+                    st.write(f"✅ **{row['nombre']}**")
+                    st.caption(f"📱 {tel}")
                 with col_actions:
-                    if st.button("✅", key=f"react_guar_{row['id']}", use_container_width=True):
-                        reactivar_guardia(row['id'])
+                    if st.button("❌", key=f"deact_guar_{row['id']}", use_container_width=True):
+                        desactivar_guardia(row['id'])
                         st.rerun()
                 st.divider()
-    else:
-        st.info("No hay guardias registrados")
+            
+            if not inactivos.empty:
+                st.warning(f"❌ Inactivos ({len(inactivos)})")
+                for idx, row in inactivos.iterrows():
+                    col_info, col_actions = st.columns([4, 1])
+                    with col_info:
+                        st.write(f"❌ **{row['nombre']}**")
+                    with col_actions:
+                        if st.button("✅", key=f"react_guar_{row['id']}", use_container_width=True):
+                            reactivar_guardia(row['id'])
+                            st.rerun()
+                    st.divider()
+        else:
+            st.info("No hay guardias registrados")
 
 # TAB 5: REGISTROS
 with tab5:
