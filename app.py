@@ -31,6 +31,26 @@ st.markdown("""
     .stAlert {padding: 1rem; margin: 1rem 0;}
     .stDeployButton {display:none;}
     .stApp header {background-color: transparent;}
+    
+    /* Hacer el botón del sidebar más visible */
+    button[kind="header"] {
+        background-color: #FF4B4B !important;
+        color: white !important;
+        font-size: 20px !important;
+        padding: 10px !important;
+        border-radius: 5px !important;
+    }
+    
+    /* Asegurar que el toggle del sidebar sea visible */
+    [data-testid="collapsedControl"] {
+        background-color: #FF4B4B !important;
+        color: white !important;
+        font-size: 24px !important;
+        padding: 15px !important;
+        margin: 10px !important;
+        border: 2px solid white !important;
+        border-radius: 8px !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -324,7 +344,42 @@ st.markdown("### Sistema de Seguridad - Vehículos y Personas")
 
 # Mensaje de ayuda si no hay guardia seleccionado
 if 'guardia_select' not in st.session_state or not st.session_state.get('guardia_select'):
-    st.info("👈 **¡Abre el panel lateral izquierdo!** Haz click en la flecha **>** de arriba a la izquierda para ver la lista de guardias y seleccionar tu nombre.")
+    st.error("👈 **¡IMPORTANTE!** Para usar la aplicación, necesitas abrir el panel lateral izquierdo")
+    
+    # Instrucciones más claras
+    st.markdown("""
+    <div style='background-color: #FFF3CD; padding: 20px; border-radius: 10px; border: 2px solid #FF4B4B;'>
+        <h2 style='color: #856404;'>🔑 ATAJO DE TECLADO: Presiona la tecla <code>[</code></h2>
+        <h3 style='color: #856404;'>O busca arriba a la IZQUIERDA un botón rojo ☰ o ></h3>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        st.info("""
+        ### 💡 Formas de abrir el panel:
+        
+        **1. TECLADO:** Presiona **`[`** (corchete izquierdo)
+        
+        **2. MOUSE:** Click en el botón arriba a la izquierda
+        
+        **3. CELULAR:** Toca el icono de menú (☰)
+        """)
+    
+    with col2:
+        st.warning("""
+        ### 📋 Después de abrirlo:
+        
+        1. ✅ Verás "👤 Guardia en Turno"
+        2. ✅ Selecciona tu nombre
+        3. ✅ Aparecerá el turno automático
+        4. ✅ ¡Ya puedes trabajar!
+        """)
+    
+    st.markdown("---")
+    st.success("💡 **TIP:** Si no ves el botón para abrir el panel, presiona la tecla **`[`** en tu teclado")
 
 st.divider()
 
@@ -769,4 +824,4 @@ with tab5:
                 st.info("No hay registros en el rango seleccionado")
 
 st.divider()
-st.markdown('<div style="text-align: center; color: gray;"><p>Sistema de Control de Acceso v3.0 | Desarrollado por Simatec S.A.</p></div>', unsafe_allow_html=True)
+st.markdown('<div style="text-align: center; color: gray;"><p>Sistema de Control de Acceso v3.0 | Desarrollado por ´Simatec S.A .</p></div>', unsafe_allow_html=True)
