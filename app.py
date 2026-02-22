@@ -94,6 +94,13 @@ def init_db():
         fecha_hora TEXT NOT NULL, guardia TEXT NOT NULL, turno TEXT NOT NULL,
         tipo_ingreso TEXT, observaciones TEXT)''')
     
+    # MIGRACIÓN: Agregar columna RUT a tabla vehiculos si no existe
+    try:
+        c.execute("SELECT rut FROM vehiculos LIMIT 1")
+    except sqlite3.OperationalError:
+        # La columna no existe, agregarla
+        c.execute("ALTER TABLE vehiculos ADD COLUMN rut TEXT")
+    
     conn.commit()
     conn.close()
 
@@ -796,4 +803,4 @@ with tab5:
                 st.info("No hay registros en el rango seleccionado")
 
 st.divider()
-st.markdown('<div style="text-align: center; color: gray;"><p>Sistema de Control de Acceso v3.0 | Desarrollado por Raúl Seguridad S.A.</p></div>', unsafe_allow_html=True)
+st.markdown('<div style="text-align: center; color: gray;"><p>Sistema de Control de Acceso v3.0 | Desarrollado por Simatec S.A.</p></div>', unsafe_allow_html=True)
