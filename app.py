@@ -17,7 +17,7 @@ st.set_page_config(
     menu_items={
         'Get Help': None,
         'Report a bug': None,
-        'About': "Control de Acceso Integral v3.0\nDesarrollado por Raúl Seguridad S.A."
+        'About': "Control de Acceso Integral v3.0\nDesarrollado por Simatec S.A."
     }
 )
 
@@ -74,7 +74,7 @@ def init_db():
     
     c.execute('''CREATE TABLE IF NOT EXISTS vehiculos (
         id INTEGER PRIMARY KEY AUTOINCREMENT, patente TEXT UNIQUE NOT NULL,
-        propietario TEXT NOT NULL, depto TEXT, marca TEXT, modelo TEXT, color TEXT,
+        propietario TEXT NOT NULL, rut TEXT, depto TEXT, marca TEXT, modelo TEXT, color TEXT,
         telefono TEXT, fecha_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         activo INTEGER DEFAULT 1, observaciones TEXT)''')
     
@@ -237,14 +237,14 @@ def reactivar_persona(persona_id):
 
 # ==================== VEHÍCULOS ====================
 
-def agregar_vehiculo(patente, propietario, depto, marca="", modelo="", color="", telefono="", observaciones=""):
+def agregar_vehiculo(patente, propietario, rut="", depto="", marca="", modelo="", color="", telefono="", observaciones=""):
     try:
         conn = sqlite3.connect('control_acceso.db')
         c = conn.cursor()
         fecha_registro_chile = datetime.now(CHILE_TZ).strftime('%Y-%m-%d %H:%M:%S')
-        c.execute('''INSERT INTO vehiculos (patente, propietario, depto, marca, modelo, color, telefono, fecha_registro, observaciones)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                  (patente.upper(), propietario.upper(), depto, marca, modelo, color, telefono, fecha_registro_chile, observaciones))
+        c.execute('''INSERT INTO vehiculos (patente, propietario, rut, depto, marca, modelo, color, telefono, fecha_registro, observaciones)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                  (patente.upper(), propietario.upper(), rut.upper(), depto, marca, modelo, color, telefono, fecha_registro_chile, observaciones))
         conn.commit()
         conn.close()
         return True, f"Vehículo {patente.upper()} agregado correctamente"
@@ -494,13 +494,15 @@ with tab2:
             with col1:
                 nueva_patente = st.text_input("Patente *", max_chars=8).upper()
                 propietario = st.text_input("Propietario *").upper()
+                rut_veh = st.text_input("RUT del Propietario", max_chars=12, placeholder="12345678-9").upper()
                 depto = st.text_input("Departamento/Unidad")
-                marca = st.text_input("Marca")
             with col2:
+                marca = st.text_input("Marca")
                 modelo = st.text_input("Modelo")
                 color = st.text_input("Color")
                 telefono = st.text_input("Teléfono")
-                observaciones_veh = st.text_area("Observaciones")
+            
+            observaciones_veh = st.text_area("Observaciones")
             
             submitted = st.form_submit_button("💾 GUARDAR VEHÍCULO", type="primary", use_container_width=True)
             if submitted:
@@ -508,8 +510,10 @@ with tab2:
                     st.error("❌ Debes completar los campos obligatorios (*)")
                 elif not validar_patente(nueva_patente):
                     st.error("❌ Formato de patente inválido")
+                elif rut_veh and not validar_rut(rut_veh):
+                    st.error("❌ RUT inválido. Verifica el formato y dígito verificador")
                 else:
-                    exito, mensaje = agregar_vehiculo(nueva_patente, propietario, depto, marca, modelo, color, telefono, observaciones_veh)
+                    exito, mensaje = agregar_vehiculo(nueva_patente, propietario, rut_veh, depto, marca, modelo, color, telefono, observaciones_veh)
                     if exito:
                         st.success(f"✅ {mensaje}")
                         st.balloons()
@@ -548,7 +552,9 @@ with tab2:
                 col_info, col_actions = st.columns([4, 1])
                 with col_info:
                     estado = "✅" if row['activo'] == 1 else "❌"
-                    st.markdown(f"{estado} **{row['patente']}** - {row['propietario']} (Depto: {row['depto']}) | 📱 {row['telefono'] if row['telefono'] else 'Sin teléfono'} | 🚗 {row['marca']} {row['modelo']} ({row['color']})")
+                    rut_display = f"RUT: {formatear_rut(row['rut'])}" if row.get('rut') and row['rut'] else ""
+                    st.markdown(f"{estado} **{row['patente']}** - {row['propietario']} {rut_display}")
+                    st.caption(f"Depto: {row['depto']} | 📱 {row['telefono'] if row['telefono'] else 'Sin teléfono'} | 🚗 {row['marca']} {row['modelo']} ({row['color']})")
                     if row['observaciones']:
                         st.caption(f"💬 {row['observaciones']}")
                 
@@ -563,7 +569,7 @@ with tab2:
                             st.rerun()
                 st.divider()
             
-            csv = df_veh[['patente', 'propietario', 'depto', 'marca', 'modelo']].to_csv(index=False).encode('utf-8')
+            csv = df_veh[['patente', 'propietario', 'rut', 'depto', 'marca', 'modelo']].to_csv(index=False).encode('utf-8')
             st.download_button("📥 Descargar CSV", csv, f"vehiculos_{datetime.now(CHILE_TZ).strftime('%Y%m%d')}.csv", "text/csv")
     else:
         st.info("📝 No hay vehículos registrados")
@@ -761,4 +767,4 @@ with tab5:
                 st.info("No hay registros en el rango seleccionado")
 
 st.divider()
-st.markdown('<div style="text-align: center; color: gray;"><p>Sistema de Control de Acceso v3.0 | Desarrollado por Raúl Seguridad S.A.</p></div>', unsafe_allow_html=True)
+st.markdown('<div style="text-align: center; color: gray;"><p>Sistema de Control de Acceso v3.0 | Desarrollado por Simatec S.A.</p></div>', unsafe_allow_html=True)
