@@ -115,18 +115,36 @@ def validar_patente(patente):
     return any(re.match(p, patente) for p in [r'^[A-Z]{4}\d{2}$', r'^[A-Z]{2}\d{4}$', r'^[A-Z]{2}\d{2}\d{2}$'])
 
 def validar_rut(rut):
+    """Valida formato RUT chileno con dígito verificador"""
     rut = rut.replace(".", "").replace("-", "").upper()
     if len(rut) < 2:
         return False
-    rut_num, dv = rut[:-1], rut[-1]
+    
+    rut_num = rut[:-1]
+    dv = rut[-1]
+    
     if not rut_num.isdigit():
         return False
-    suma, multiplo = 0, 2
+    
+    # Calcular dígito verificador con algoritmo módulo 11
+    suma = 0
+    multiplo = 2
     for r in reversed(rut_num):
         suma += int(r) * multiplo
-        multiplo = 8 if multiplo == 7 else multiplo + 1
-    dvr = 11 - (suma % 11)
-    dvr = '0' if dvr == 11 else 'K' if dvr == 10 else str(dvr)
+        multiplo += 1
+        if multiplo == 8:
+            multiplo = 2
+    
+    resto = suma % 11
+    dvr = 11 - resto
+    
+    if dvr == 11:
+        dvr = '0'
+    elif dvr == 10:
+        dvr = 'K'
+    else:
+        dvr = str(dvr)
+    
     return dv == dvr
 
 def formatear_rut(rut):
@@ -352,11 +370,22 @@ col_guard, col_turno, col_hora = st.columns([2, 1, 1])
 
 with col_guard:
     if guardias_disponibles:
+        # Mantener guardia seleccionado después de rerun
+        if 'guardia_actual' in st.session_state and st.session_state.guardia_actual in guardias_disponibles:
+            default_index = guardias_disponibles.index(st.session_state.guardia_actual) + 1
+        else:
+            default_index = 0
+        
         nombre_guardia = st.selectbox(
             "Guardia:",
             options=[""] + guardias_disponibles,
+            index=default_index,
             key="guardia_select_main"
         )
+        
+        # Guardar en session_state
+        if nombre_guardia:
+            st.session_state.guardia_actual = nombre_guardia
     else:
         st.warning("⚠️ No hay guardias registrados")
         nombre_guardia = st.text_input("Nombre del Guardia:", key="guardia_nombre_manual_main")
