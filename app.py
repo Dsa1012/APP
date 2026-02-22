@@ -17,7 +17,7 @@ st.set_page_config(
     menu_items={
         'Get Help': None,
         'Report a bug': None,
-        'About': "Control de Acceso Integral v3.0\nDesarrollado por Raúl Seguridad S.A."
+        'About': "Control de Acceso Integral v3.0\nDesarrollado por Simatec Seguridad S.A."
     }
 )
 
