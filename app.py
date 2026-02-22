@@ -13,7 +13,7 @@ st.set_page_config(
     page_title="Control de Acceso - Raúl Seguridad",
     page_icon="🚗",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="expanded",  # Siempre expandido
     menu_items={
         'Get Help': None,
         'Report a bug': None,
@@ -322,6 +322,12 @@ if st.session_state.auto_refresh:
 st.markdown('<p class="big-font">🏢 Control de Acceso Integral</p>', unsafe_allow_html=True)
 st.markdown("### Sistema de Seguridad - Vehículos y Personas")
 
+# Mensaje de ayuda si no hay guardia seleccionado
+if 'guardia_select' not in st.session_state or not st.session_state.get('guardia_select'):
+    st.info("👈 **¡Abre el panel lateral izquierdo!** Haz click en la flecha **>** de arriba a la izquierda para ver la lista de guardias y seleccionar tu nombre.")
+
+st.divider()
+
 # SIDEBAR
 with st.sidebar:
     st.header("👤 Guardia en Turno")
@@ -377,7 +383,19 @@ with tab1:
     st.header("🔍 Validación de Entrada")
     
     if not nombre_guardia:
-        st.warning("⚠️ Debes seleccionar un guardia en el sidebar para continuar")
+        st.warning("⚠️ **IMPORTANTE:** Debes seleccionar un guardia en el panel lateral izquierdo (sidebar) para continuar")
+        st.info("👈 **Mira a la izquierda** → Abre el panel lateral (sidebar) si está cerrado y selecciona tu nombre de la lista")
+        
+        # Botón de ayuda visual
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            st.markdown("""
+            ### 📋 Pasos para empezar:
+            1. 👈 Abre el **panel lateral izquierdo** (sidebar)
+            2. 👤 Selecciona tu **nombre** de la lista de guardias
+            3. ✅ El turno se detectará automáticamente
+            4. 🚀 ¡Listo! Ya puedes validar entradas
+            """)
     else:
         col_veh, col_per = st.columns(2)
         
