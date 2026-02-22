@@ -407,8 +407,37 @@ with col_turno:
 
 with col_hora:
     if nombre_guardia:
-        hora_actual = datetime.now(CHILE_TZ).strftime('%H:%M:%S')
-        st.metric("Hora", hora_actual)
+        # Reloj que se actualiza automáticamente cada segundo
+        st.markdown("""
+        <div style='text-align: center; padding: 10px; background-color: #262730; border-radius: 5px;'>
+            <div style='font-size: 12px; color: #888;'>Hora Chile</div>
+            <div id='reloj' style='font-size: 24px; font-weight: bold; color: #fff;'>--:--:--</div>
+        </div>
+        <script>
+        function actualizarReloj() {
+            const ahora = new Date();
+            // Convertir a hora de Chile (UTC-3)
+            const offset = -3 * 60; // Chile está en UTC-3
+            const utc = ahora.getTime() + (ahora.getTimezoneOffset() * 60000);
+            const chile = new Date(utc + (offset * 60000));
+            
+            const horas = String(chile.getHours()).padStart(2, '0');
+            const minutos = String(chile.getMinutes()).padStart(2, '0');
+            const segundos = String(chile.getSeconds()).padStart(2, '0');
+            
+            const reloj = document.getElementById('reloj');
+            if (reloj) {
+                reloj.textContent = horas + ':' + minutos + ':' + segundos;
+            }
+        }
+        
+        // Actualizar inmediatamente
+        actualizarReloj();
+        
+        // Actualizar cada segundo
+        setInterval(actualizarReloj, 1000);
+        </script>
+        """, unsafe_allow_html=True)
 
 if nombre_guardia:
     st.success(f"✅ Guardia activo: **{nombre_guardia}**")
