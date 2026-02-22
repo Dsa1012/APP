@@ -17,7 +17,7 @@ st.set_page_config(
     menu_items={
         'Get Help': None,
         'Report a bug': None,
-        'About': "Control de Acceso Integral v3.0\nDesarrollado por Simatec S.A."
+        'About': "Control de Acceso Integral v3.0\nDesarrollado por Raúl Seguridad S.A."
     }
 )
 
@@ -494,7 +494,7 @@ with tab2:
             with col1:
                 nueva_patente = st.text_input("Patente *", max_chars=8).upper()
                 propietario = st.text_input("Propietario *").upper()
-                rut_veh = st.text_input("RUT del Propietario", max_chars=12, placeholder="12345678-9").upper()
+                rut_veh = st.text_input("RUT del Propietario (sin puntos, con guión)", max_chars=12, placeholder="18311040-3", help="Ejemplo: 18311040-3").upper()
                 depto = st.text_input("Departamento/Unidad")
             with col2:
                 marca = st.text_input("Marca")
@@ -511,7 +511,7 @@ with tab2:
                 elif not validar_patente(nueva_patente):
                     st.error("❌ Formato de patente inválido")
                 elif rut_veh and not validar_rut(rut_veh):
-                    st.error("❌ RUT inválido. Verifica el formato y dígito verificador")
+                    st.error("❌ RUT inválido. Formato correcto: 18311040-3 (sin puntos, con guión y dígito verificador)")
                 else:
                     exito, mensaje = agregar_vehiculo(nueva_patente, propietario, rut_veh, depto, marca, modelo, color, telefono, observaciones_veh)
                     if exito:
@@ -767,4 +767,4 @@ with tab5:
                 st.info("No hay registros en el rango seleccionado")
 
 st.divider()
-st.markdown('<div style="text-align: center; color: gray;"><p>Sistema de Control de Acceso v3.0 | Desarrollado por Simatec S.A.</p></div>', unsafe_allow_html=True)
+st.markdown('<div style="text-align: center; color: gray;"><p>Sistema de Control de Acceso v3.0 | Desarrollado por Raúl Seguridad S.A.</p></div>', unsafe_allow_html=True)
