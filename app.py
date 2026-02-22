@@ -21,7 +21,7 @@ st.set_page_config(
     }
 )
 
-# CSS personalizado
+# CSS personalizado  
 st.markdown("""
     <style>
     #MainMenu {visibility: hidden;}
@@ -32,32 +32,27 @@ st.markdown("""
     .stDeployButton {display:none;}
     .stApp header {background-color: transparent;}
     
-    /* FORZAR SIDEBAR SIEMPRE VISIBLE */
-    section[data-testid="stSidebar"] {
-        display: block !important;
-        visibility: visible !important;
-        min-width: 300px !important;
-    }
-    
-    section[data-testid="stSidebar"][aria-expanded="false"] {
-        display: block !important;
-        margin-left: 0px !important;
-    }
-    
-    /* Ocultar botón de colapsar sidebar */
-    button[kind="header"] {
+    /* Ocultar COMPLETAMENTE el botón de colapsar sidebar */
+    button[kind="header"],
+    [data-testid="collapsedControl"],
+    .css-1544g2n,
+    .css-163ttbj {
         display: none !important;
-    }
-    
-    [data-testid="collapsedControl"] {
-        display: none !important;
-    }
-    
-    /* Asegurar que el sidebar no se pueda cerrar */
-    .css-1lcbmhc {
-        display: block !important;
+        visibility: hidden !important;
     }
     </style>
+    
+    <script>
+    // Forzar que el sidebar esté abierto
+    window.addEventListener('load', function() {
+        const sidebar = window.parent.document.querySelector('[data-testid="stSidebar"]');
+        if (sidebar) {
+            sidebar.setAttribute('aria-expanded', 'true');
+            sidebar.style.display = 'block';
+            sidebar.style.visibility = 'visible';
+        }
+    });
+    </script>
     """, unsafe_allow_html=True)
 
 # Lista de guardias iniciales
@@ -403,19 +398,7 @@ with tab1:
     st.header("🔍 Validación de Entrada")
     
     if not nombre_guardia:
-        st.warning("⚠️ **IMPORTANTE:** Debes seleccionar un guardia en el panel lateral izquierdo (sidebar) para continuar")
-        st.info("👈 **Mira a la izquierda** → Abre el panel lateral (sidebar) si está cerrado y selecciona tu nombre de la lista")
-        
-        # Botón de ayuda visual
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            st.markdown("""
-            ### 📋 Pasos para empezar:
-            1. 👈 Abre el **panel lateral izquierdo** (sidebar)
-            2. 👤 Selecciona tu **nombre** de la lista de guardias
-            3. ✅ El turno se detectará automáticamente
-            4. 🚀 ¡Listo! Ya puedes validar entradas
-            """)
+        st.warning("⚠️ Debes seleccionar un guardia para continuar")
     else:
         col_veh, col_per = st.columns(2)
         
