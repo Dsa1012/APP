@@ -343,52 +343,41 @@ if st.session_state.auto_refresh:
 st.markdown('<p class="big-font">🏢 Control de Acceso Integral</p>', unsafe_allow_html=True)
 st.markdown("### Sistema de Seguridad - Vehículos y Personas")
 
-# SIDEBAR
-with st.sidebar:
-    st.header("👤 Guardia en Turno")
-    guardias_disponibles = obtener_guardias_activos()
-    
+# SELECTOR DE GUARDIA EN LA PÁGINA PRINCIPAL (no en sidebar)
+st.subheader("👤 Selecciona Guardia en Turno")
+
+guardias_disponibles = obtener_guardias_activos()
+
+col_guard, col_turno, col_hora = st.columns([2, 1, 1])
+
+with col_guard:
     if guardias_disponibles:
-        nombre_guardia = st.selectbox("Seleccionar Guardia", options=[""] + guardias_disponibles, key="guardia_select")
+        nombre_guardia = st.selectbox(
+            "Guardia:",
+            options=[""] + guardias_disponibles,
+            key="guardia_select_main"
+        )
     else:
         st.warning("⚠️ No hay guardias registrados")
-        nombre_guardia = st.text_input("Nombre del Guardia", key="guardia_nombre_manual")
-    
-    if not nombre_guardia:
-        st.warning("⚠️ Selecciona un guardia para continuar")
-    else:
+        nombre_guardia = st.text_input("Nombre del Guardia:", key="guardia_nombre_manual_main")
+
+with col_turno:
+    if nombre_guardia:
         turno_actual = determinar_turno()
-        st.success(f"✅ Guardia: {nombre_guardia}")
-        st.info(f"{'☀️' if 'Día' in turno_actual else '🌙'} {turno_actual}")
-    
-    st.divider()
-    hora_actual = datetime.now(CHILE_TZ).strftime('%H:%M:%S')
-    fecha_actual = datetime.now(CHILE_TZ).strftime('%d/%m/%Y')
-    st.info(f"🕐 **Hora Chile:** {hora_actual}")
-    st.caption(f"📅 {fecha_actual}")
-    
-    auto_refresh = st.checkbox("🔄 Actualización automática (30s)", value=st.session_state.auto_refresh)
-    if auto_refresh != st.session_state.auto_refresh:
-        st.session_state.auto_refresh = auto_refresh
-        st.session_state.last_refresh_time = datetime.now(CHILE_TZ)
-    
-    st.divider()
-    st.subheader("📊 Resumen del Día")
-    df_hoy = obtener_registros_hoy()
-    
-    col_stat1, col_stat2 = st.columns(2)
-    with col_stat1:
-        st.metric("Ingresos", len(df_hoy))
-    with col_stat2:
-        if not df_hoy.empty:
-            vehiculos_hoy = len(df_hoy[df_hoy['tipo_registro'] == 'VEHICULO'])
-            personas_hoy = len(df_hoy[df_hoy['tipo_registro'] == 'PERSONA'])
-            st.metric("🚗 Veh", vehiculos_hoy)
-            st.metric("👤 Per", personas_hoy)
-    
-    df_vehiculos = obtener_vehiculos()
-    df_personas = obtener_personas()
-    st.metric("Autorizados", len(df_vehiculos) + len(df_personas))
+        if "Día" in turno_actual:
+            st.success(f"☀️ {turno_actual}")
+        else:
+            st.info(f"🌙 {turno_actual}")
+
+with col_hora:
+    if nombre_guardia:
+        hora_actual = datetime.now(CHILE_TZ).strftime('%H:%M:%S')
+        st.metric("Hora", hora_actual)
+
+if nombre_guardia:
+    st.success(f"✅ Guardia activo: **{nombre_guardia}**")
+
+st.divider()
 
 # TABS
 tab1, tab2, tab3, tab4, tab5 = st.tabs(["🔍 Validar Entrada", "🚗 Vehículos", "👤 Personas", "👮 Guardias", "📈 Registros"])
