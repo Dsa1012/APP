@@ -657,7 +657,30 @@ with tab2:
                 elif not validar_patente(nueva_patente):
                     st.error("❌ Formato de patente inválido")
                 elif rut_veh and not validar_rut(rut_veh):
-                    st.error("❌ RUT inválido. Formato correcto: 18311040-3 (sin puntos, con guión y dígito verificador)")
+                    # Calcular DV para mostrar en el error
+                    rut_limpio = rut_veh.replace(".", "").replace("-", "").upper()
+                    if len(rut_limpio) >= 2:
+                        rut_num = rut_limpio[:-1]
+                        dv_ingresado = rut_limpio[-1]
+                        suma = 0
+                        multiplo = 2
+                        for r in reversed(rut_num):
+                            if r.isdigit():
+                                suma += int(r) * multiplo
+                                multiplo += 1
+                                if multiplo == 8:
+                                    multiplo = 2
+                        resto = suma % 11
+                        dv_calculado = 11 - resto
+                        if dv_calculado == 11:
+                            dv_esperado = '0'
+                        elif dv_calculado == 10:
+                            dv_esperado = 'K'
+                        else:
+                            dv_esperado = str(dv_calculado)
+                        st.error(f"❌ RUT inválido. Ingresaste: {rut_num}-{dv_ingresado}, pero el dígito verificador correcto es: {dv_esperado}")
+                    else:
+                        st.error("❌ RUT inválido. Formato correcto: 18311040-3 (sin puntos, con guión y dígito verificador)")
                 elif estado_autorizacion_veh != "AUTORIZADO" and not observaciones_veh:
                     st.error("❌ Debes indicar el motivo en Observaciones para vehículos NO AUTORIZADOS o RESTRINGIDOS")
                 else:
