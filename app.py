@@ -101,6 +101,18 @@ def init_db():
         # La columna no existe, agregarla
         c.execute("ALTER TABLE vehiculos ADD COLUMN rut TEXT")
     
+    # MIGRACIÓN: Agregar columna estado_autorizacion a vehiculos
+    try:
+        c.execute("SELECT estado_autorizacion FROM vehiculos LIMIT 1")
+    except sqlite3.OperationalError:
+        c.execute("ALTER TABLE vehiculos ADD COLUMN estado_autorizacion TEXT DEFAULT 'AUTORIZADO'")
+    
+    # MIGRACIÓN: Agregar columna estado_autorizacion a personas
+    try:
+        c.execute("SELECT estado_autorizacion FROM personas LIMIT 1")
+    except sqlite3.OperationalError:
+        c.execute("ALTER TABLE personas ADD COLUMN estado_autorizacion TEXT DEFAULT 'AUTORIZADO'")
+    
     conn.commit()
     conn.close()
 
@@ -212,14 +224,14 @@ def reactivar_guardia(guardia_id):
 
 # ==================== PERSONAS ====================
 
-def agregar_persona(rut, nombre, depto, telefono, tipo, observaciones=""):
+def agregar_persona(rut, nombre, depto, telefono, tipo, estado_autorizacion="AUTORIZADO", observaciones=""):
     try:
         conn = sqlite3.connect('control_acceso.db')
         c = conn.cursor()
         fecha_registro_chile = datetime.now(CHILE_TZ).strftime('%Y-%m-%d %H:%M:%S')
-        c.execute('''INSERT INTO personas (rut, nombre, depto, telefono, tipo, fecha_registro, observaciones)
-                     VALUES (?, ?, ?, ?, ?, ?, ?)''',
-                  (rut.upper(), nombre.upper(), depto, telefono, tipo, fecha_registro_chile, observaciones))
+        c.execute('''INSERT INTO personas (rut, nombre, depto, telefono, tipo, fecha_registro, estado_autorizacion, observaciones)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+                  (rut.upper(), nombre.upper(), depto, telefono, tipo, fecha_registro_chile, estado_autorizacion, observaciones))
         conn.commit()
         conn.close()
         return True, f"Persona {nombre} agregada correctamente"
@@ -262,14 +274,14 @@ def reactivar_persona(persona_id):
 
 # ==================== VEHÍCULOS ====================
 
-def agregar_vehiculo(patente, propietario, rut="", depto="", marca="", modelo="", color="", telefono="", observaciones=""):
+def agregar_vehiculo(patente, propietario, rut="", depto="", marca="", modelo="", color="", telefono="", estado_autorizacion="AUTORIZADO", observaciones=""):
     try:
         conn = sqlite3.connect('control_acceso.db')
         c = conn.cursor()
         fecha_registro_chile = datetime.now(CHILE_TZ).strftime('%Y-%m-%d %H:%M:%S')
-        c.execute('''INSERT INTO vehiculos (patente, propietario, rut, depto, marca, modelo, color, telefono, fecha_registro, observaciones)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                  (patente.upper(), propietario.upper(), rut.upper(), depto, marca, modelo, color, telefono, fecha_registro_chile, observaciones))
+        c.execute('''INSERT INTO vehiculos (patente, propietario, rut, depto, marca, modelo, color, telefono, fecha_registro, estado_autorizacion, observaciones)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                  (patente.upper(), propietario.upper(), rut.upper(), depto, marca, modelo, color, telefono, fecha_registro_chile, estado_autorizacion, observaciones))
         conn.commit()
         conn.close()
         return True, f"Vehículo {patente.upper()} agregado correctamente"
@@ -463,26 +475,64 @@ with tab1:
             
             if st.session_state.vehiculo_encontrado is not None and st.session_state.mostrar_confirmacion_vehiculo:
                 veh = st.session_state.vehiculo_encontrado
-                st.success("✅ VEHÍCULO AUTORIZADO")
-                st.write(f"**Patente:** {veh['patente']}")
-                st.write(f"**Propietario:** {veh['propietario']}")
-                st.write(f"**Depto:** {veh['depto']}")
-                if veh['marca'] or veh['modelo']:
-                    st.write(f"**Vehículo:** {veh['marca']} {veh['modelo']} ({veh['color']})")
                 
-                with st.form("confirmar_ingreso_vehiculo"):
-                    st.write(f"**Tipo:** {tipo_ingreso_veh}")
-                    turno_veh = determinar_turno()
-                    st.caption(f"Turno: {turno_veh}")
-                    confirmar_btn = st.form_submit_button("✅ CONFIRMAR INGRESO", type="primary", use_container_width=True)
+                # Verificar estado de autorización
+                estado_aut = veh.get('estado_autorizacion', 'AUTORIZADO')
+                
+                if estado_aut == "NO AUTORIZADO":
+                    st.error("🚫 ¡ATENCIÓN! VEHÍCULO NO AUTORIZADO - NO PERMITIR INGRESO")
+                    st.write(f"**Patente:** {veh['patente']}")
+                    st.write(f"**Propietario:** {veh['propietario']}")
+                    st.write(f"**Depto:** {veh['depto']}")
+                    if veh['observaciones']:
+                        st.warning(f"**Motivo:** {veh['observaciones']}")
+                    st.info("👮 Contactar al administrador o supervisor si intenta ingresar")
                     
-                    if confirmar_btn:
-                        registrar_ingreso("VEHICULO", veh['patente'], veh['propietario'], veh['depto'], nombre_guardia, turno_veh, tipo_ingreso_veh)
-                        st.success(f"✅ Ingreso de {veh['patente']} registrado correctamente")
-                        st.balloons()
-                        st.session_state.vehiculo_encontrado = None
-                        st.session_state.mostrar_confirmacion_vehiculo = False
-                        st.rerun()
+                elif estado_aut == "RESTRINGIDO":
+                    st.warning("⚠️ VEHÍCULO RESTRINGIDO - VERIFICAR ANTES DE AUTORIZAR")
+                    st.write(f"**Patente:** {veh['patente']}")
+                    st.write(f"**Propietario:** {veh['propietario']}")
+                    st.write(f"**Depto:** {veh['depto']}")
+                    if veh['marca'] or veh['modelo']:
+                        st.write(f"**Vehículo:** {veh['marca']} {veh['modelo']} ({veh['color']})")
+                    if veh['observaciones']:
+                        st.warning(f"**Restricción:** {veh['observaciones']}")
+                    
+                    with st.form("confirmar_ingreso_vehiculo"):
+                        st.write(f"**Tipo:** {tipo_ingreso_veh}")
+                        turno_veh = determinar_turno()
+                        st.caption(f"Turno: {turno_veh}")
+                        st.warning("⚠️ Confirmar solo si cumple con las restricciones indicadas")
+                        confirmar_btn = st.form_submit_button("⚠️ AUTORIZAR EXCEPCIONALMENTE", type="secondary", use_container_width=True)
+                        
+                        if confirmar_btn:
+                            registrar_ingreso("VEHICULO", veh['patente'], veh['propietario'], veh['depto'], nombre_guardia, turno_veh, tipo_ingreso_veh, f"RESTRINGIDO: {veh.get('observaciones', '')}")
+                            st.warning(f"⚠️ Ingreso EXCEPCIONAL de {veh['patente']} registrado")
+                            st.session_state.vehiculo_encontrado = None
+                            st.session_state.mostrar_confirmacion_vehiculo = False
+                            st.rerun()
+                
+                else:  # AUTORIZADO
+                    st.success("✅ VEHÍCULO AUTORIZADO")
+                    st.write(f"**Patente:** {veh['patente']}")
+                    st.write(f"**Propietario:** {veh['propietario']}")
+                    st.write(f"**Depto:** {veh['depto']}")
+                    if veh['marca'] or veh['modelo']:
+                        st.write(f"**Vehículo:** {veh['marca']} {veh['modelo']} ({veh['color']})")
+                    
+                    with st.form("confirmar_ingreso_vehiculo"):
+                        st.write(f"**Tipo:** {tipo_ingreso_veh}")
+                        turno_veh = determinar_turno()
+                        st.caption(f"Turno: {turno_veh}")
+                        confirmar_btn = st.form_submit_button("✅ CONFIRMAR INGRESO", type="primary", use_container_width=True)
+                        
+                        if confirmar_btn:
+                            registrar_ingreso("VEHICULO", veh['patente'], veh['propietario'], veh['depto'], nombre_guardia, turno_veh, tipo_ingreso_veh)
+                            st.success(f"✅ Ingreso de {veh['patente']} registrado correctamente")
+                            st.balloons()
+                            st.session_state.vehiculo_encontrado = None
+                            st.session_state.mostrar_confirmacion_vehiculo = False
+                            st.rerun()
                 
                 if st.button("🔄 NUEVA BÚSQUEDA", key="nueva_busqueda_veh"):
                     st.session_state.vehiculo_encontrado = None
@@ -510,25 +560,63 @@ with tab1:
             
             if st.session_state.persona_encontrada is not None and st.session_state.mostrar_confirmacion_persona:
                 per = st.session_state.persona_encontrada
-                st.success("✅ PERSONA AUTORIZADA")
-                st.write(f"**RUT:** {formatear_rut(per['rut'])}")
-                st.write(f"**Nombre:** {per['nombre']}")
-                st.write(f"**Depto:** {per['depto']}")
-                st.write(f"**Tipo:** {per['tipo']}")
                 
-                with st.form("confirmar_ingreso_persona"):
-                    st.write(f"**Tipo Ingreso:** {tipo_ingreso_per}")
-                    turno_per = determinar_turno()
-                    st.caption(f"Turno: {turno_per}")
-                    confirmar_btn_per = st.form_submit_button("✅ CONFIRMAR INGRESO", type="primary", use_container_width=True)
+                # Verificar estado de autorización
+                estado_aut = per.get('estado_autorizacion', 'AUTORIZADO')
+                
+                if estado_aut == "NO AUTORIZADO":
+                    st.error("🚫 ¡ATENCIÓN! PERSONA NO AUTORIZADA - NO PERMITIR INGRESO")
+                    st.write(f"**RUT:** {formatear_rut(per['rut'])}")
+                    st.write(f"**Nombre:** {per['nombre']}")
+                    st.write(f"**Depto:** {per['depto']}")
+                    st.write(f"**Tipo:** {per['tipo']}")
+                    if per['observaciones']:
+                        st.warning(f"**Motivo:** {per['observaciones']}")
+                    st.info("👮 Contactar al administrador o supervisor si intenta ingresar")
                     
-                    if confirmar_btn_per:
-                        registrar_ingreso("PERSONA", per['rut'], per['nombre'], per['depto'], nombre_guardia, turno_per, tipo_ingreso_per)
-                        st.success(f"✅ Ingreso de {per['nombre']} registrado correctamente")
-                        st.balloons()
-                        st.session_state.persona_encontrada = None
-                        st.session_state.mostrar_confirmacion_persona = False
-                        st.rerun()
+                elif estado_aut == "RESTRINGIDO":
+                    st.warning("⚠️ PERSONA RESTRINGIDA - VERIFICAR ANTES DE AUTORIZAR")
+                    st.write(f"**RUT:** {formatear_rut(per['rut'])}")
+                    st.write(f"**Nombre:** {per['nombre']}")
+                    st.write(f"**Depto:** {per['depto']}")
+                    st.write(f"**Tipo:** {per['tipo']}")
+                    if per['observaciones']:
+                        st.warning(f"**Restricción:** {per['observaciones']}")
+                    
+                    with st.form("confirmar_ingreso_persona"):
+                        st.write(f"**Tipo Ingreso:** {tipo_ingreso_per}")
+                        turno_per = determinar_turno()
+                        st.caption(f"Turno: {turno_per}")
+                        st.warning("⚠️ Confirmar solo si cumple con las restricciones indicadas")
+                        confirmar_btn_per = st.form_submit_button("⚠️ AUTORIZAR EXCEPCIONALMENTE", type="secondary", use_container_width=True)
+                        
+                        if confirmar_btn_per:
+                            registrar_ingreso("PERSONA", per['rut'], per['nombre'], per['depto'], nombre_guardia, turno_per, tipo_ingreso_per, f"RESTRINGIDO: {per.get('observaciones', '')}")
+                            st.warning(f"⚠️ Ingreso EXCEPCIONAL de {per['nombre']} registrado")
+                            st.session_state.persona_encontrada = None
+                            st.session_state.mostrar_confirmacion_persona = False
+                            st.rerun()
+                
+                else:  # AUTORIZADO
+                    st.success("✅ PERSONA AUTORIZADA")
+                    st.write(f"**RUT:** {formatear_rut(per['rut'])}")
+                    st.write(f"**Nombre:** {per['nombre']}")
+                    st.write(f"**Depto:** {per['depto']}")
+                    st.write(f"**Tipo:** {per['tipo']}")
+                    
+                    with st.form("confirmar_ingreso_persona"):
+                        st.write(f"**Tipo Ingreso:** {tipo_ingreso_per}")
+                        turno_per = determinar_turno()
+                        st.caption(f"Turno: {turno_per}")
+                        confirmar_btn_per = st.form_submit_button("✅ CONFIRMAR INGRESO", type="primary", use_container_width=True)
+                        
+                        if confirmar_btn_per:
+                            registrar_ingreso("PERSONA", per['rut'], per['nombre'], per['depto'], nombre_guardia, turno_per, tipo_ingreso_per)
+                            st.success(f"✅ Ingreso de {per['nombre']} registrado correctamente")
+                            st.balloons()
+                            st.session_state.persona_encontrada = None
+                            st.session_state.mostrar_confirmacion_persona = False
+                            st.rerun()
                 
                 if st.button("🔄 NUEVA BÚSQUEDA", key="nueva_busqueda_per"):
                     st.session_state.persona_encontrada = None
@@ -553,7 +641,14 @@ with tab2:
                 color = st.text_input("Color")
                 telefono = st.text_input("Teléfono")
             
-            observaciones_veh = st.text_area("Observaciones")
+            # Estado de autorización
+            estado_autorizacion_veh = st.selectbox(
+                "Estado de Autorización *",
+                ["AUTORIZADO", "NO AUTORIZADO", "RESTRINGIDO"],
+                help="AUTORIZADO: Puede ingresar | NO AUTORIZADO: No puede ingresar | RESTRINGIDO: Requiere verificación adicional"
+            )
+            
+            observaciones_veh = st.text_area("Observaciones (obligatorio para NO AUTORIZADO o RESTRINGIDO)" if estado_autorizacion_veh != "AUTORIZADO" else "Observaciones")
             
             submitted = st.form_submit_button("💾 GUARDAR VEHÍCULO", type="primary", use_container_width=True)
             if submitted:
@@ -563,10 +658,17 @@ with tab2:
                     st.error("❌ Formato de patente inválido")
                 elif rut_veh and not validar_rut(rut_veh):
                     st.error("❌ RUT inválido. Formato correcto: 18311040-3 (sin puntos, con guión y dígito verificador)")
+                elif estado_autorizacion_veh != "AUTORIZADO" and not observaciones_veh:
+                    st.error("❌ Debes indicar el motivo en Observaciones para vehículos NO AUTORIZADOS o RESTRINGIDOS")
                 else:
-                    exito, mensaje = agregar_vehiculo(nueva_patente, propietario, rut_veh, depto, marca, modelo, color, telefono, observaciones_veh)
+                    exito, mensaje = agregar_vehiculo(nueva_patente, propietario, rut_veh, depto, marca, modelo, color, telefono, estado_autorizacion_veh, observaciones_veh)
                     if exito:
-                        st.success(f"✅ {mensaje}")
+                        if estado_autorizacion_veh == "NO AUTORIZADO":
+                            st.warning(f"⚠️ {mensaje} - Estado: NO AUTORIZADO")
+                        elif estado_autorizacion_veh == "RESTRINGIDO":
+                            st.warning(f"⚠️ {mensaje} - Estado: RESTRINGIDO")
+                        else:
+                            st.success(f"✅ {mensaje}")
                         st.balloons()
                         st.rerun()
                     else:
@@ -603,8 +705,22 @@ with tab2:
                 col_info, col_actions = st.columns([4, 1])
                 with col_info:
                     estado = "✅" if row['activo'] == 1 else "❌"
+                    
+                    # Estado de autorización con colores
+                    estado_aut = row.get('estado_autorizacion', 'AUTORIZADO')
+                    if estado_aut == "NO AUTORIZADO":
+                        badge_aut = "🚫 NO AUTORIZADO"
+                        color_fondo = "background-color: #8B0000; color: white; padding: 3px 8px; border-radius: 3px; font-weight: bold;"
+                    elif estado_aut == "RESTRINGIDO":
+                        badge_aut = "⚠️ RESTRINGIDO"
+                        color_fondo = "background-color: #FF8C00; color: white; padding: 3px 8px; border-radius: 3px; font-weight: bold;"
+                    else:
+                        badge_aut = "✅ AUTORIZADO"
+                        color_fondo = "background-color: #006400; color: white; padding: 3px 8px; border-radius: 3px; font-weight: bold;"
+                    
                     rut_display = f"RUT: {formatear_rut(row['rut'])}" if row.get('rut') and row['rut'] else ""
                     st.markdown(f"{estado} **{row['patente']}** - {row['propietario']} {rut_display}")
+                    st.markdown(f"<span style='{color_fondo}'>{badge_aut}</span>", unsafe_allow_html=True)
                     st.caption(f"Depto: {row['depto']} | 📱 {row['telefono'] if row['telefono'] else 'Sin teléfono'} | 🚗 {row['marca']} {row['modelo']} ({row['color']})")
                     if row['observaciones']:
                         st.caption(f"💬 {row['observaciones']}")
@@ -639,7 +755,15 @@ with tab3:
             with col2:
                 telefono_per = st.text_input("Teléfono")
                 tipo_per = st.selectbox("Tipo *", ["Residente", "Servicio", "Proveedor", "Otro"])
-                observaciones_per = st.text_area("Observaciones")
+            
+            # Estado de autorización
+            estado_autorizacion_per = st.selectbox(
+                "Estado de Autorización *",
+                ["AUTORIZADO", "NO AUTORIZADO", "RESTRINGIDO"],
+                help="AUTORIZADO: Puede ingresar | NO AUTORIZADO: No puede ingresar | RESTRINGIDO: Requiere verificación adicional"
+            )
+            
+            observaciones_per = st.text_area("Observaciones (obligatorio para NO AUTORIZADO o RESTRINGIDO)" if estado_autorizacion_per != "AUTORIZADO" else "Observaciones")
             
             submitted_per = st.form_submit_button("💾 GUARDAR PERSONA", type="primary", use_container_width=True)
             if submitted_per:
@@ -647,10 +771,17 @@ with tab3:
                     st.error("❌ Debes completar los campos obligatorios (*)")
                 elif not validar_rut(nuevo_rut):
                     st.error("❌ RUT inválido")
+                elif estado_autorizacion_per != "AUTORIZADO" and not observaciones_per:
+                    st.error("❌ Debes indicar el motivo en Observaciones para personas NO AUTORIZADAS o RESTRINGIDAS")
                 else:
-                    exito, mensaje = agregar_persona(nuevo_rut, nombre_per, depto_per, telefono_per, tipo_per, observaciones_per)
+                    exito, mensaje = agregar_persona(nuevo_rut, nombre_per, depto_per, telefono_per, tipo_per, estado_autorizacion_per, observaciones_per)
                     if exito:
-                        st.success(f"✅ {mensaje}")
+                        if estado_autorizacion_per == "NO AUTORIZADO":
+                            st.warning(f"⚠️ {mensaje} - Estado: NO AUTORIZADO")
+                        elif estado_autorizacion_per == "RESTRINGIDO":
+                            st.warning(f"⚠️ {mensaje} - Estado: RESTRINGIDO")
+                        else:
+                            st.success(f"✅ {mensaje}")
                         st.balloons()
                         st.rerun()
                     else:
@@ -669,7 +800,22 @@ with tab3:
             col_info, col_actions = st.columns([4, 1])
             with col_info:
                 estado = "✅" if row['activo'] == 1 else "❌"
-                st.markdown(f"{estado} **{formatear_rut(row['rut'])}** - {row['nombre']} (Depto: {row['depto']}) | 📱 {row['telefono'] if row['telefono'] else 'Sin teléfono'} | Tipo: {row['tipo']}")
+                
+                # Estado de autorización con colores
+                estado_aut = row.get('estado_autorizacion', 'AUTORIZADO')
+                if estado_aut == "NO AUTORIZADO":
+                    badge_aut = "🚫 NO AUTORIZADO"
+                    color_fondo = "background-color: #8B0000; color: white; padding: 3px 8px; border-radius: 3px; font-weight: bold;"
+                elif estado_aut == "RESTRINGIDO":
+                    badge_aut = "⚠️ RESTRINGIDO"
+                    color_fondo = "background-color: #FF8C00; color: white; padding: 3px 8px; border-radius: 3px; font-weight: bold;"
+                else:
+                    badge_aut = "✅ AUTORIZADO"
+                    color_fondo = "background-color: #006400; color: white; padding: 3px 8px; border-radius: 3px; font-weight: bold;"
+                
+                st.markdown(f"{estado} **{formatear_rut(row['rut'])}** - {row['nombre']}")
+                st.markdown(f"<span style='{color_fondo}'>{badge_aut}</span>", unsafe_allow_html=True)
+                st.caption(f"Depto: {row['depto']} | 📱 {row['telefono'] if row['telefono'] else 'Sin teléfono'} | Tipo: {row['tipo']}")
                 if row['observaciones']:
                     st.caption(f"💬 {row['observaciones']}")
             
